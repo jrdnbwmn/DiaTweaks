@@ -1,4 +1,4 @@
-#import "StdPatch/StdPatch.h"
+#import "StdPatch/Hide.h"
 
 #define DPPinnedTab "_TtC5TabUI15TabDockItemView"
 #define DPTabBackground "_TtC5TabUI17TabBackgroundView"
@@ -38,7 +38,9 @@ static NSString *DPVerifyMatchingTabShadow(DPPatch *patch) {
     if (!page) return @"no page shadow found";
     for (NSView *pinned in DPFindViews(DPPinnedTab)) {
         NSView *selection = DPFindView(pinned, ^BOOL(NSView *v) { return [NSStringFromClass(v.class) containsString:@"SelectionOutlineView"]; });
-        if (!selection || selection.hiddenOrHasHiddenAncestor) continue;
+        // When the border patch suppresses Dia's selected outline, it must still have the selected shadow.
+        if (!selection || selection.superview.hiddenOrHasHiddenAncestor ||
+            (selection.hidden && ![DPSuppressed containsObject:selection])) continue;
         CALayer *shadow = pinned.layer;
         if (fabs(shadow.shadowOpacity - page.shadowOpacity) > 0.001 || fabs(shadow.shadowRadius - page.shadowRadius) > 0.001 ||
             !CGSizeEqualToSize(shadow.shadowOffset, page.shadowOffset) || !CGColorEqualToColor(shadow.shadowColor, page.shadowColor))
@@ -100,7 +102,8 @@ static void DPApplyPinnedTab(NSView *pinned) {
     CALayer *page = DPPageShadow();
     if (!page || !pinned.layer) return;
     NSView *selection = DPFindView(pinned, ^BOOL(NSView *v) { return [NSStringFromClass(v.class) containsString:@"SelectionOutlineView"]; });
-    BOOL selected = selection && !selection.hidden;
+    // AIDEV-NOTE: a suppressed outline is still selected; only its border is hidden.
+    BOOL selected = selection && (!selection.hidden || [DPSuppressed containsObject:selection]);
     DPApplyShadowLayer(pinned.layer, page, DPMatchSidebarTabShadow.on && selected, NO);
 }
 
