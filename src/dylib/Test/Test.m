@@ -36,6 +36,14 @@ static void DPRunScenario(NSArray<NSArray<NSString *> *> *scenarios, NSUInteger 
 }
 
 void DPRunTests(NSString *path) {
+    // Test mode can check a newly opened page without toggling saved-on patches first.
+    [NSDistributedNotificationCenter.defaultCenter addObserverForName:@"com.diapatches.test.verify" object:nil
+        queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+            int8_t current[DPPatchCount];
+            for (NSUInteger i = 0; i < DPPatchCount; i++) current[i] = DPPatches[i]->on;
+            NSString *report = [path.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"current-views-report.json"];
+            DPRunScenario(@[@[note.object ?: @"current views", DPBits(current)]], 0, [NSMutableArray new], report);
+        }];
     DPOnLaunch(^{
         __block int polls = 0;
         [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
@@ -46,6 +54,8 @@ void DPRunTests(NSString *path) {
             NSMutableArray<NSArray<NSString *> *> *scenarios = DPScenarios();
             int8_t saved[DPPatchCount];
             for (NSUInteger i = 0; i < DPPatchCount; i++) saved[i] = DPSavedOn(DPPatches[i]);
+            // Check saved-on patches before any toggle can hide a launch-order bug.
+            [scenarios insertObject:@[@"saved settings at launch", DPBits(saved)] atIndex:0];
             [scenarios addObject:@[@"saved settings", DPBits(saved)]];
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                 DPRunScenario(scenarios, 0, [NSMutableArray new], path);

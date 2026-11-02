@@ -1,0 +1,27 @@
+#!/bin/sh
+# Run make test first, then open a fresh page before invoking this check.
+set -eu
+cd "$(dirname "$0")/.."
+report="$PWD/build/current-views-report.json"
+clang -fobjc-arc -framework Foundation -x objective-c -o build/check-current-views-notify - <<'OBJC'
+#import <Foundation/Foundation.h>
+int main(void) { @autoreleasepool {
+    [[NSDistributedNotificationCenter defaultCenter] postNotificationName:@"com.diapatches.test.verify"
+        object:@"new page with saved patches enabled" userInfo:nil deliverImmediately:YES];
+} }
+OBJC
+rm -f "$report"
+./build/check-current-views-notify
+for _ in $(seq 50); do [ -f "$report" ] && break; sleep 0.1; done
+[ -f "$report" ] || { echo "No report: run make test to launch Dia in test mode first." >&2; exit 1; }
+python3 - "$report" <<'PY'
+import json, sys
+report = json.load(open(sys.argv[1]))
+failures = 0
+for scenario in report['scenarios']:
+    print(('FAIL ' if scenario['failures'] else 'ok   ') + scenario['name'])
+    for key, problem in scenario['failures'].items():
+        print(f'     {key}: {problem}')
+    failures += len(scenario['failures'])
+sys.exit(bool(failures))
+PY
